@@ -37,11 +37,20 @@ jobs:
             -configuration Release \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             build
 
-      - name: Upload .app
+      - name: Package to IPA
+        run: |
+          mkdir -p Payload
+          mv build/Build/Products/Release-iphoneos/*.app Payload/
+          zip -r SwiftPan.ipa Payload
+
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: SwiftPan-unsigned
-          path: build/Build/Products/Release-iphoneos/*.app
-          if-no-files-found: warn
+          name: SwiftPan-unsigned-ipa
+          path: SwiftPan.ipa
+          if-no-files-found: error
+          retention-days: 14
