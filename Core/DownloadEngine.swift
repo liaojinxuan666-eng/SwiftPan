@@ -4,23 +4,19 @@ import Combine
 final class DownloadEngine: NSObject, ObservableObject {
     static let shared = DownloadEngine()
 
-    // 进度字典：file.id -> Progress
     @Published var progressMap: [String: Double] = [:]
     
-    private let maxConcurrentChunks = 8 // 并发分片数，建议 8-16
+    private let maxConcurrentChunks = 8 
     private var currentSession: URLSession?
     
     private override init() {
         super.init()
     }
 
-    /// 开始多线程分段下载
     func startDownload(file: CloudFile, completion: @escaping (Result<URL, Error>) -> Void) {
-        // 如果已经存在任务，就不重复下载
         guard progressMap[file.id] == nil else { return }
         progressMap[file.id] = 0.0
         
-        // 1. 先探测文件大小 (HEAD 请求)
         var request = URLRequest(url: file.downloadURL)
         request.httpMethod = "HEAD"
         
@@ -40,13 +36,11 @@ final class DownloadEngine: NSObject, ObservableObject {
                 return
             }
             
-            // 2. 计算每个分片的大小
             let chunkSize = totalSize / Int64(self.maxConcurrentChunks)
             let group = DispatchGroup()
             var errors: [Error] = []
             let lock = NSLock()
             
-            // 临时文件夹存放分片
             let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(file.id)
             try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
             
@@ -68,11 +62,9 @@ final class DownloadEngine: NSObject, ObservableObject {
                     
                     guard let data = data else { return }
                     
-                    // 写入分片文件
                     let chunkPath = tempDir.appendingPathComponent("chunk_\(i)")
                     try? data.write(to: chunkPath)
                     
-                    // 更新进度
                     DispatchQueue.main.async {
                         let currentProgress = (self.progressMap[file.id] ?? 0.0) + (Double(data.count) / Double(totalSize))
                         self.progressMap[file.id] = min(currentProgress, 1.0)
@@ -80,7 +72,6 @@ final class DownloadEngine: NSObject, ObservableObject {
                 }.resume()
             }
             
-            // 3. 等待所有分片下载完成并合并
             group.notify(queue: .global()) {
                 if !errors.isEmpty {
                     DispatchQueue.main.async { completion(.failure(errors.first!)) }
@@ -95,7 +86,6 @@ final class DownloadEngine: NSObject, ObservableObject {
                         try FileManager.default.removeItem(at: finalDest)
                     }
                     
-                    // 合并文件
                     FileManager.default.createFile(atPath: finalDest.path, contents: nil)
                     let fileHandle = try FileHandle(forWritingTo: finalDest)
                     
@@ -107,7 +97,6 @@ final class DownloadEngine: NSObject, ObservableObject {
                     }
                     fileHandle.closeFile()
                     
-                    // 清理临时文件
                     try? FileManager.default.removeItem(at: tempDir)
                     
                     DispatchQueue.main.async {
@@ -123,5 +112,4 @@ final class DownloadEngine: NSObject, ObservableObject {
 }
 
 extension DownloadEngine: URLSessionDelegate {
-    // 后续如果想处理后台下载的证书校验，可以在这里扩展
 }
